@@ -6,7 +6,9 @@ from PIL import Image, ImageTk  # 画像データ用
 import numpy as np              # アフィン変換行列演算用
 import os                       # ディレクトリ操作用
 import cv2
-import sys
+
+VERSION_INFO = "1.1"
+DATE_INFO = "2023/7/30"
 
 class Application(tk.Frame):
     def __init__(self, master=None):
@@ -23,8 +25,6 @@ class Application(tk.Frame):
         self.pil_image = None           # 表示する画像データ
         self.filename = None            # 最後に開いた画像ファイル名
  
-        self.opened_splitFile = False #rectファイルを開いているか
-
         self.create_menu()   # メニューの作成
         self.create_widget() # ウィジェットの作成
 
@@ -76,6 +76,10 @@ class Application(tk.Frame):
         # 矩形情報を保存
         self.save_rectfile()
 
+    def menu_version_clicked(self, event=None):
+        #バージョン情報確認
+        self.open_version()
+
     # -------------------------------------------------------------------------------
     # menuバーとステータスバーのUI設定
     # -------------------------------------------------------------------------------
@@ -104,8 +108,14 @@ class Application(tk.Frame):
         self.menu_bar.bind_all("<Control-o>", self.menu_open_clicked) # ファイルを開くのショートカット(Ctrol-Oボタン)
         self.menu_bar.bind_all("<Control-z>", self.menu_undo_clicked) # ファイルを開くのショートカット(Ctrol-Zボタン)
         self.menu_bar.bind_all("<Control-s>", self.menu_save_clicked) # ファイルを開くのショートカット(Ctrol-Sボタン)
+
+        #バージョン情報
+        self.version_menu = tk.Menu(self.menu_bar,tearoff = tk.OFF)
+        self.menu_bar.add_cascade(label="バージョン", menu=self.version_menu)
+        self.version_menu.add_command(label="バージョン情報",command=self.menu_version_clicked)
+
         self.master.config(menu=self.menu_bar) # メニューバーの配置
- 
+
     def create_widget(self):
         '''ウィジェットの作成'''
         #####################################################
@@ -306,29 +316,46 @@ class Application(tk.Frame):
         self.tree["yscrollcommand"]=vsb.set
 
         self.id_list={}
-        id_tmp=self.tree.insert("","end",values=(0,5,5,50,50))
-        self.id_list[id_tmp]=[0,5,5,50,50]
+        #id_tmp=self.tree.insert("","end",values=(0,5,5,50,50))
+        #self.id_list[id_tmp]=[0,5,5,50,50]
 
-        btn_rectangle = tk.Button(self.tab2, text = "矩形を描画", width = 15, command = self.btn_draw_split_click)
-        btn_rectangle.place(x=x_set,y=y_set+height+10,height=20)
+        #btn_rectangle = tk.Button(self.tab2, text = "矩形を描画", width = 15, command = self.btn_draw_split_click)
+        #btn_rectangle.place(x=x_set,y=y_set+height+10,height=20)
 
         btn_delete = tk.Button(self.tab2, text = "選択行を削除", width = 15, command = self.btn_delete_click)
-        btn_delete.place(x=x_set+120+5,y=y_set+height+10,height=20)
+        btn_delete.place(x=x_set,y=y_set+height+10,height=20)
 
-        self.new_data = tk.StringVar()
-        txt_new_data = tk.Entry(self.tab2,textvariable=self.new_data)
-        txt_new_data.place(x=x_set,y=y_set+height+50,height=20)
+        lbl_set_split = tk.Label(self.tab2, text = "下記のサイズの矩形を設置 (Shift+左クリック)")
+        lbl_set_split.place(x =x_set,y=y_set+height+50,height=20)
 
-        btn_add = tk.Button(self.tab2, text = "データを表に追加", width = 15, command = self.btn_add_click)
-        btn_add.place(x=x_set+120+5,y=y_set+height+50,height=20)
+        lbl_x_size = tk.Label(self.tab2, text = "X:")
+        lbl_x_size.place(x =x_set,y=y_set+height+70,height=20)
 
-        self.check_value = tk.BooleanVar()
-        self.check_grid = tk.Checkbutton(self.tab2, variable=self.check_value,text = "グリッド表示", command = self.check_button_click)
-        self.check_grid.place(x=x_set,y=y_set+height+100,height=20)
+        self.x_size = tk.StringVar()
+        txt_x_size = tk.Entry(self.tab2,textvariable=self.x_size)
+        txt_x_size.place(x=x_set+20,y=y_set+height+70,height=20,width=50)
+        self.x_size.set(10)
+
+        lbl_y_size = tk.Label(self.tab2, text = "Y:")
+        lbl_y_size.place(x =x_set+80,y=y_set+height+70,height=20)
+
+        self.y_size = tk.StringVar()
+        txt_y_size = tk.Entry(self.tab2,textvariable=self.y_size)
+        txt_y_size.place(x=x_set+100,y=y_set+height+70,height=20,width=50)
+        self.y_size.set(10)
+
+        self.check_value_split = tk.BooleanVar()
+        self.check_split = tk.Checkbutton(self.tab2, variable=self.check_value_split,text = "矩形表示", command = self.check_button_split_click)
+        self.check_split.place(x=x_set,y=y_set+height+110,height=20)
+
+        self.check_value_grid = tk.BooleanVar()
+        self.check_grid = tk.Checkbutton(self.tab2, variable=self.check_value_grid,text = "グリッド表示", command = self.check_button_grid_click)
+        self.check_grid.place(x=x_set,y=y_set+height+135,height=20)
 
         self.radio_value = tk.IntVar(value=0)
         self.rectangle_mode = 0
 
+        """
         self.radio0 = tk.Radiobutton(self.tab2,text="20x80",command=self.radio_click,variable=self.radio_value,value=0)
         self.radio1 = tk.Radiobutton(self.tab2,text="80x20",command=self.radio_click,variable=self.radio_value,value=1)
         self.radio2 = tk.Radiobutton(self.tab2,text="40x40",command=self.radio_click,variable=self.radio_value,value=2)
@@ -340,6 +367,7 @@ class Application(tk.Frame):
         self.radio2.place(x=x_set+120,y=y_set+height+120,height=20)
         self.radio3.place(x=x_set+200,y=y_set+height+80,height=20)
         self.radio4.place(x=x_set+200,y=y_set+height+100,height=20)
+        """
 
         #----------------------------
         #tab3の内容 矩形
@@ -347,12 +375,6 @@ class Application(tk.Frame):
         #矩形描画ボタンをトップに持ってくる
         btn_rectangle = tk.Button(self.tab3, text = "矩形を描画", width = 15, command = self.btn_rectangle_click)
         btn_rectangle.grid(row = 0, column = 0, columnspan = 4, sticky=tk.EW)
-
-        #データ出力ボタンをボトムに持ってくる
-        space = tk.Label(self.tab3,text="")
-        space.grid(row=24,column=0,columnspan=4,sticky=tk.W)
-        btn_rectangle = tk.Button(self.tab3, text = "データ出力", width = 15, command = self.btn_data_output_click)
-        btn_rectangle.grid(row = 25, column = 0, columnspan = 4, sticky=tk.EW)
 
         #下辺の入力
         space = tk.Label(self.tab3,text="")
@@ -508,6 +530,12 @@ class Application(tk.Frame):
         txt_leftLine_RBX.grid(row = 5, column = 1, sticky=tk.E) 
         txt_leftLine_RBY.grid(row = 5, column = 3, sticky=tk.E)
 
+        #データ出力ボタンをボトムに持ってくる
+        space = tk.Label(self.tab3,text="")
+        space.grid(row=24,column=0,columnspan=4,sticky=tk.W)
+        btn_rectangle = tk.Button(self.tab3, text = "データ出力", width = 15, command = self.btn_data_output_click)
+        btn_rectangle.grid(row = 25, column = 0, columnspan = 4, sticky=tk.EW)
+
         #notebookを配置
         notebook.pack(side = tk.RIGHT, fill = tk.Y)
 
@@ -529,6 +557,7 @@ class Application(tk.Frame):
         self.canvas.bind("<Button-1>", self.mouse_down_left)                # MouseDown（左ボタン）
         self.canvas.bind("<Double-Button-1>", self.mouse_double_click_left) # MouseDoubleClick（左ボタン）
         self.canvas.bind("<MouseWheel>", self.mouse_wheel)                  # MouseWheel
+        self.canvas.bind("<ButtonRelease-1>", self.left_click_release)      # 左クリックを離す
 
     #---------------------------------------------------------------
     #menu barの項目選択時の関数
@@ -569,6 +598,8 @@ class Application(tk.Frame):
         #フィルター結果出力用のリスト
         self.filter_list = []
 
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
 
     #画像保存
     def save(self):
@@ -685,8 +716,6 @@ class Application(tk.Frame):
 
         splitFile = open(filename,"r")
 
-        self.opened_splitFile = True #rectファイルを開いているか
-
         #現在の表の項目をすべて削除
         for key in self.id_list:
             self.tree.delete(key)
@@ -702,7 +731,7 @@ class Application(tk.Frame):
             y = split_line.split(",")[1]
             lx = split_line.split(",")[2]
             ly = split_line.split(",")[3]
-            id_tmp=self.tree.insert("","end",values=(n,x,y,lx,ly))
+            id_tmp=self.tree.insert("","end",values=(n+1,x,y,lx,ly))
             self.id_list[id_tmp]=[n,x,y,lx,ly]
 
             split_line = splitFile.readline()
@@ -715,7 +744,23 @@ class Application(tk.Frame):
     #分割描画用の座標ファイルを保存
     def save_splitfile(self):
 
-        return
+        filename = filedialog.asksaveasfilename(title="名前を付けて保存",\
+                filetypes=[("CSV",".csv")],\
+                initialdir="./",\
+                defaultextension = "csv")
+
+        output_rect_file = open(filename,"w")
+
+        for key in self.id_list:
+            output_line = "" 
+            for i in self.id_list[key][1:]:
+                output_line+=str(i)+","
+            output_line+="\n"
+            output_rect_file.write(output_line)
+
+        output_rect_file.close()
+
+        return 
 
     #矩形描画用の座標テキストファイルをオープン
     def open_rectfile(self):
@@ -807,8 +852,78 @@ class Application(tk.Frame):
 
     #矩形情報を保存
     def save_rectfile(self):
+        '''データ出力ボタンがクリックされたとき'''
+        
+        outputFileName = filedialog.asksaveasfilename(title="名前を付けて保存",\
+                filetypes=[("TEXT",".txt")],\
+                initialdir="./",\
+                defaultextension = "txt")
 
+        outputFile = open(outputFileName,"w")
+
+        #左辺の情報
+        ltx = int(self.leftLine_LTX.get())
+        lty = int(self.leftLine_LTY.get())
+        rbx = int(self.leftLine_RBX.get())
+        rby = int(self.leftLine_RBY.get())
+        output_line = "RECT_LFFT " + str(ltx)+","+str(lty)+","+str(rbx)+","+str(rby)+"\n"
+        outputFile.write(output_line)
+
+        #上辺の情報
+        ltx = int(self.topLine_LTX.get())
+        lty = int(self.topLine_LTY.get())
+        rbx = int(self.topLine_RBX.get())
+        rby = int(self.topLine_RBY.get())
+        output_line = "RECT_TOP " + str(ltx)+","+str(lty)+","+str(rbx)+","+str(rby)+"\n"
+        outputFile.write(output_line)
+
+        #右辺の情報
+        ltx = int(self.rightLine_LTX.get())
+        lty = int(self.rightLine_LTY.get())
+        rbx = int(self.rightLine_RBX.get())
+        rby = int(self.rightLine_RBY.get())
+        output_line = "RECT_RIGHT " + str(ltx)+","+str(lty)+","+str(rbx)+","+str(rby)+"\n"
+        outputFile.write(output_line)
+
+        #下辺の情報
+        ltx = int(self.bottomLine_LTX.get())
+        lty = int(self.bottomLine_LTY.get())
+        rbx = int(self.bottomLine_RBX.get())
+        rby = int(self.bottomLine_RBY.get())
+        output_line = "RECT_BOTTOM " + str(ltx)+","+str(lty)+","+str(rbx)+","+str(rby)+"\n"
+        outputFile.write(output_line)
+
+        outputFile.close()
+        
         return
+    
+    #バージョン情報確認用のウインドウを開く
+    def open_version(self):
+        self.dlg_version = tk.Toplevel(self.master)
+        self.dlg_version.title("バージョン情報")
+        self.dlg_version.geometry("300x150")
+
+        self.dlg_version.grab_set()
+        self.dlg_version.focus_set()
+        self.dlg_version.transient(self.master)
+
+        dlg_test_address_label = tk.Label(self.dlg_version,text="バージョン："+VERSION_INFO,font=("MSゴシック","15"))
+        dlg_test_address_label.pack()
+        dlg_test_address_label.place(x=60,y=30,height=20)
+
+        dlg_test_address_label = tk.Label(self.dlg_version,text="作成日："+DATE_INFO,font=("MSゴシック","15"))
+        dlg_test_address_label.pack()
+        dlg_test_address_label.place(x=60,y=60,height=20)
+
+        #閉じるボタンを設置
+        btn_close = tk.Button(self.dlg_version,text="閉じる",font=("MSゴシック","15"),command=self.dlg_version_close)
+        btn_close.place(x=100,y=100,height=30)
+
+        app.wait_window(self.dlg_version)
+    
+    #dlgを閉じる関数
+    def dlg_version_close(self):
+        self.dlg_version.destroy()
 
     # -------------------------------------------------------------------------------
     # マウスイベント
@@ -834,7 +949,7 @@ class Application(tk.Frame):
             self.image_position["text"] = f"image({x: 4d}, {y: 4d}) = {value}"
 
             split_list = []
-            if self.opened_splitFile:
+            if len(self.id_list)>0:
                 for key in self.id_list:
                     n = self.id_list[key][0]
                     sx = int(self.id_list[key][1])
@@ -858,7 +973,23 @@ class Application(tk.Frame):
 
     def mouse_down_left(self, event):
         ''' マウスの左ボタンを押した '''
-        self.__old_event = event
+        ''' 現在の位置情報を取得 '''
+        if event.state & 0x1:
+
+            # 画像座標
+            mouse_posi = np.array([event.x, event.y, 1]) # マウス座標(numpyのベクトル)
+            mat_inv = np.linalg.inv(self.mat_affine)     # 逆行列（画像→Cancasの変換からCanvas→画像の変換へ）
+            self.image_posi = np.dot(mat_inv, mouse_posi)     # 座標のアフィン変換
+            x = int(np.floor(self.image_posi[0]))
+            y = int(np.floor(self.image_posi[1]))
+            if x >= 0 and x < self.pil_image.width and y >= 0 and y < self.pil_image.height:
+                #self.rx1 = x
+                #self.ry1 = y
+                self.rx1 = 10*(x//10)
+                self.ry1 = 10*(y//10)
+                self.rectangle = 1
+        else:
+            self.__old_event = event
 
     def mouse_double_click_left(self, event):
         ''' マウスの左ボタンをダブルクリック '''
@@ -880,7 +1011,28 @@ class Application(tk.Frame):
             self.scale_at(1.25, event.x, event.y)
         
         self.redraw_image() # 再描画
-    
+
+    def left_click_release(self,event):
+        ''' マウスの左クリックをリリース '''
+        '''矩形画像を描画'''
+        if self.pil_image is None:
+            return
+
+        if event.state & 0x1:
+            #矩形のサイズを取得
+            x_size = int(self.x_size.get())
+            y_size = int(self.y_size.get())
+
+            cv2.rectangle(self.cv_image,(self.rx1,self.ry1),(self.rx1+x_size,self.ry1+y_size),(0,0,200),1)
+            #self.check_button_split_click()
+
+            item = self.tree.insert("","end",values=(len(self.id_list)+1,self.rx1,self.ry1,x_size,y_size))
+            self.id_list[item]=[len(self.id_list)+1,self.rx1,self.ry1,x_size,y_size]
+
+            self.redraw_image() # 再描画
+
+        return
+
     # -------------------------------------------------------------------------------
     # 画像表示用アフィン変換
     # -------------------------------------------------------------------------------
@@ -1031,6 +1183,9 @@ class Application(tk.Frame):
         #フィルター履歴を残す
         self.filter_list.append(["THRESHOLD",low,high])
 
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
+
         # 処理後画像の表示
         self.draw_image(self.cv_image)
 
@@ -1051,6 +1206,9 @@ class Application(tk.Frame):
 
         #フィルター履歴を残す
         self.filter_list.append(["BILATERAL",d])
+
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
 
         self.draw_image(self.cv_image)
 
@@ -1076,6 +1234,9 @@ class Application(tk.Frame):
         #フィルター履歴を残す
         self.filter_list.append(["SIGMOID",a,b])
 
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
+
         self.draw_image(self.cv_image)
 
     def btn_dilate_click(self):
@@ -1099,6 +1260,9 @@ class Application(tk.Frame):
         #フィルター履歴を残す
         self.filter_list.append(["DILATE",iteration])
 
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
+
         self.draw_image(self.cv_image)
 
     def btn_erode_click(self):
@@ -1121,6 +1285,9 @@ class Application(tk.Frame):
 
         #フィルター履歴を残す
         self.filter_list.append(["ERODE",iteration])
+
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
 
         self.draw_image(self.cv_image)
 
@@ -1147,6 +1314,9 @@ class Application(tk.Frame):
         #フィルター履歴を残す
         self.filter_list.append(["SOBEL",k])
 
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
+
         self.draw_image(self.cv_image)
 
     def btn_adjust_click(self):
@@ -1167,6 +1337,9 @@ class Application(tk.Frame):
 
         #フィルター履歴を残す
         self.filter_list.append(["ADJUST",alpha,beta])
+
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
 
         self.draw_image(self.cv_image)
 
@@ -1196,6 +1369,9 @@ class Application(tk.Frame):
         #フィルター履歴を残す
         self.filter_list.append(["UNSHARP",k])
 
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
+
         # 処理後画像の表示
         self.draw_image(self.cv_image)
 
@@ -1221,33 +1397,15 @@ class Application(tk.Frame):
         #フィルター履歴を残す
         self.filter_list.append(["GAUSSIAN",ksize])
 
+        #矩形表示・非表示切り替え用
+        self.before_split_image = self.cv_image.copy()
+
         # 処理後画像の表示
         self.draw_image(self.cv_image)
 
     #############################################################
     #ボタンイベント tab2
     #############################################################
-
-    def btn_draw_split_click(self):
-        #描画ボタンがクリックされたとき:
-        if self.pil_image is None:
-            return
-
-        if self.cv_image.ndim == 2:
-            self.cv_image = cv2.cvtColor(self.cv_image,cv2.COLOR_GRAY2RGBA)
-
-        for i,key in enumerate(self.id_list):
-            x1 = int(self.id_list[key][1])
-            y1 = int(self.id_list[key][2])
-            x2 = x1+int(self.id_list[key][3])
-            y2 = y1+int(self.id_list[key][4])
-            cv2.rectangle(self.cv_image,(x1,y1),(x2,y2),(0,0,200),1)
-            cv2.putText(self.cv_image,str(i),(x1,y1),cv2.FONT_HERSHEY_PLAIN,1.5,(0,200,0),1,cv2.LINE_AA)
-
-        self.redraw_image()
-
-        return
-
 
     def btn_delete_click(self):
         '''表削除ボタンがクリックされたとき'''
@@ -1260,24 +1418,8 @@ class Application(tk.Frame):
             self.id_list[key][0]=i
             self.tree.set(key,column=0,value=i)
 
-    def btn_add_click(self):
-        '''表追加ボタンがクリックされたとき'''
-
-        data = self.new_data.get()
-        data_arr = data.split(",")
-
-        if len(data_arr)!=4:
-            self.new_data.set("")
-            return
-       
-        item = self.tree.insert("","end",values=(len(self.id_list),data_arr[0],data_arr[1],data_arr[2],data_arr[3]))
-        self.id_list[item]=[len(self.id_list),data_arr[0],data_arr[1],data_arr[2],data_arr[3]]
-        self.new_data.set("")
-
-        return 
-
-    def check_button_click(self):
-        '''チェックボタンがクリックされたとき'''
+    def check_button_split_click(self):
+        '''矩形表示がチェックされたとき'''
 
         if self.pil_image is None:
             return
@@ -1285,7 +1427,34 @@ class Application(tk.Frame):
         if self.cv_image.ndim == 2:
             self.cv_image = cv2.cvtColor(self.cv_image,cv2.COLOR_GRAY2RGBA)
 
-        value = self.check_value.get()
+        value = self.check_value_split.get()
+
+        if value:
+            for i,key in enumerate(self.id_list):
+                x1 = int(self.id_list[key][1])
+                y1 = int(self.id_list[key][2])
+                x2 = x1+int(self.id_list[key][3])
+                y2 = y1+int(self.id_list[key][4])
+                cv2.rectangle(self.cv_image,(x1,y1),(x2,y2),(0,0,200),1)
+                #cv2.putText(self.cv_image,str(i),(x1,y1),cv2.FONT_HERSHEY_PLAIN,1.5,(0,200,0),1,cv2.LINE_AA)
+
+        else:
+            self.cv_image = self.before_split_image
+
+        self.redraw_image()
+
+        return
+
+    def check_button_grid_click(self):
+        '''グリッドチェックボタンがクリックされたとき'''
+
+        if self.pil_image is None:
+            return
+
+        if self.cv_image.ndim == 2:
+            self.cv_image = cv2.cvtColor(self.cv_image,cv2.COLOR_GRAY2RGBA)
+
+        value = self.check_value_grid.get()
 
         if value:
             #チェックボックスがONしていればgridを表示
@@ -1311,19 +1480,6 @@ class Application(tk.Frame):
             self.cv_image = self.before_grid_image
 
         self.redraw_image()
-
-    def radio_click(self):
-        '''ラジオボタンがクリックされたとき'''
-        value = self.radio_value.get()
-        self.rectangle_mode = value
-
-        return
-
-
-
-
-
-
 
 
     # -------------------------------------------------------------------------------

@@ -1,10 +1,12 @@
 import tkinter as tk            # ウィンドウ作成用
 from tkinter import ttk
 from tkinter import filedialog  # ファイルを開くダイアログ用
+from tkinter import messagebox
 from PIL import Image, ImageTk  # 画像データ用
 import numpy as np              # アフィン変換行列演算用
 import os                       # ディレクトリ操作用
 import cv2
+import sys
 
 class Application(tk.Frame):
     def __init__(self, master=None):
@@ -21,19 +23,12 @@ class Application(tk.Frame):
         self.pil_image = None           # 表示する画像データ
         self.filename = None            # 最後に開いた画像ファイル名
  
-        self.opened_rectFile = False #rectファイルを開いているか
+        self.opened_splitFile = False #rectファイルを開いているか
 
         self.create_menu()   # メニューの作成
         self.create_widget() # ウィジェットの作成
 
-        self.image_list=[] #redo用画像list
-        self.image_posi=[] #redo用画像list
-
-        self.original_pixel=[] #failサンプル取得用
-        self.fail_pixel=[] #failサンプル取得用
-        self.fail_pattern=np.array([]) #failサンプル取得用
-
-        self.right_click_mode = "A" #failサンプル取得用
+        self.image_posi=[] 
 
     # -------------------------------------------------------------------------------
     # メニューイベント
@@ -45,12 +40,9 @@ class Application(tk.Frame):
             initialdir = os.getcwd() # カレントディレクトリ
             )
 
+
         # 画像ファイルを設定する
         self.set_image(filename)
-
-    def menu_reload_clicked(self, event=None):
-        # File → ReLoad
-        self.set_image(self.filename)
 
     def menu_quit_clicked(self):
         # ウィンドウを閉じる
@@ -62,16 +54,30 @@ class Application(tk.Frame):
 
     def menu_save_clicked(self,event=None):
         # 画像を一つ戻す
-        self.save() 
+        self.save()
+    
+    def menu_save_filter_clicked(self,event=None):
+        #フィルターの履歴を保存する
+        self.save_filter()
 
     def menu_open_splitfile_clicked(self,event=None):
         #分割情報を開く
         self.open_splitfile()
+    
+    def menu_save_splitfile_clicked(self,event=None):
+        #分割情報を保存
+        self.save_splitfile()
 
     def menu_open_rectfile_clicked(self,event=None):
         # 矩形情報を開く
         self.open_rectfile()
 
+    def menu_save_rectfile_clicked(self,event=None):
+        # 矩形情報を保存
+        self.save_rectfile()
+
+    # -------------------------------------------------------------------------------
+    # menuバーとステータスバーのUI設定
     # -------------------------------------------------------------------------------
 
     # create_menuメソッドを定義
@@ -82,25 +88,26 @@ class Application(tk.Frame):
         self.menu_bar.add_cascade(label="ファイル", menu=self.file_menu)
 
         self.file_menu.add_command(label="画像を開く", command = self.menu_open_clicked, accelerator="Ctrl+O")
-        self.file_menu.add_command(label="画像をリロード", command = self.menu_reload_clicked, accelerator="Ctrl+R")
         self.file_menu.add_command(label="処理を戻る", command = self.menu_undo_clicked, accelerator="Ctrl+Z")
         self.file_menu.add_command(label="画像を保存", command = self.menu_save_clicked, accelerator="Ctrl+S")
         self.file_menu.add_separator() # セパレーターを追加
+        self.file_menu.add_command(label="フィルター情報を保存", command = self.menu_save_filter_clicked)
+        self.file_menu.add_separator() # セパレーターを追加
         self.file_menu.add_command(label="分割情報を開く", command = self.menu_open_splitfile_clicked)
+        self.file_menu.add_command(label="分割情報を保存", command = self.menu_save_splitfile_clicked)
         self.file_menu.add_separator() # セパレーターを追加
         self.file_menu.add_command(label="矩形情報を開く", command = self.menu_open_rectfile_clicked)
+        self.file_menu.add_command(label="矩形情報を保存", command = self.menu_save_rectfile_clicked)
         self.file_menu.add_separator() # セパレーターを追加
         self.file_menu.add_command(label="終了", command = self.menu_quit_clicked)
 
         self.menu_bar.bind_all("<Control-o>", self.menu_open_clicked) # ファイルを開くのショートカット(Ctrol-Oボタン)
-        self.menu_bar.bind_all("<Control-r>", self.menu_reload_clicked) # ファイルを開くのショートカット(Ctrol-Rボタン)
         self.menu_bar.bind_all("<Control-z>", self.menu_undo_clicked) # ファイルを開くのショートカット(Ctrol-Zボタン)
         self.menu_bar.bind_all("<Control-s>", self.menu_save_clicked) # ファイルを開くのショートカット(Ctrol-Sボタン)
         self.master.config(menu=self.menu_bar) # メニューバーの配置
  
     def create_widget(self):
         '''ウィジェットの作成'''
-
         #####################################################
         # ステータスバー相当(親に追加)
         self.statusbar = tk.Frame(self.master)
@@ -122,6 +129,11 @@ class Application(tk.Frame):
         self.history = tk.Label(self.statusbar_2, relief = tk.SUNKEN,text="history -> ")
         self.history.pack(side=tk.LEFT)
         self.statusbar_2.pack(side=tk.BOTTOM, fill=tk.X)
+
+
+        #------------------------------------------------------------------
+        #タブのUIを設定
+        #------------------------------------------------------------------
 
         #####################################################
         #notebookを使う
@@ -147,7 +159,7 @@ class Application(tk.Frame):
         #tab1の内容
         #----------------------------
         # Threshold
-        btn_threshold = tk.Button(self.tab1, text = "Threshold", width = 15, command = self.btn_threshold_click)
+        btn_threshold = tk.Button(self.tab1, text = "Threshold", font=("bold",12),command = self.btn_threshold_click)
         lbl_threshold_low = tk.Label(self.tab1, text = "下側閾値")
         lbl_threshold_high = tk.Label(self.tab1, text = "上側閾値")
         self.threshold_low = tk.StringVar() 
@@ -157,14 +169,14 @@ class Application(tk.Frame):
         txt_threshold_low = tk.Entry(self.tab1, justify = tk.RIGHT,  textvariable = self.threshold_low)
         txt_threshold_high = tk.Entry(self.tab1, justify = tk.RIGHT,  textvariable = self.threshold_high)
         # 配置
-        btn_threshold.grid(row = 0, column = 0, columnspan = 3, pady=1,sticky=tk.EW)
+        btn_threshold.grid(row = 0, column = 0, columnspan = 2, pady=1,sticky=tk.EW)
         lbl_threshold_low.grid(row = 1, column = 0, pady=1,sticky=tk.EW) 
         txt_threshold_low.grid(row = 1, column = 1, pady=1,sticky=tk.EW) 
         lbl_threshold_high.grid(row = 2, column = 0, pady=1,sticky=tk.EW) 
         txt_threshold_high.grid(row = 2, column = 1, pady=1,sticky=tk.EW) 
 
         # Gaussian
-        btn_gaussian = tk.Button(self.tab1, text = "Gaussian", width = 15, command = self.btn_gaussian_click)
+        btn_gaussian = tk.Button(self.tab1, text = "Gaussian", font=("bold",12),command = self.btn_gaussian_click)
         lbl_gaussian = tk.Label(self.tab1, text = "フィルタサイズ(整数)")
         self.gaussian_ksize = tk.StringVar() 
         self.gaussian_ksize.set("3")
@@ -175,7 +187,7 @@ class Application(tk.Frame):
         txt_gaussian.grid(row = 4, column = 1, pady=1,sticky=tk.EW) 
 
         #鮮鋭化フィルタ
-        btn_unsharp = tk.Button(self.tab1, text = "Unsharp masking", width = 15, command = self.btn_unsharp_click)
+        btn_unsharp = tk.Button(self.tab1, text = "Unsharp masking",font=("bold",12),command = self.btn_unsharp_click)
         lbl_unsharp = tk.Label(self.tab1, text = "フィルタサイズ(整数)")
         self.unsharp_kvalue = tk.StringVar() 
         self.unsharp_kvalue.set("1")
@@ -186,7 +198,7 @@ class Application(tk.Frame):
         txt_unsharp.grid(row = 6, column = 1, pady=1,sticky=tk.EW) 
 
         #adjustフィルタ
-        btn_adjust = tk.Button(self.tab1, text = "Adjust", width = 15, command = self.btn_adjust_click)
+        btn_adjust = tk.Button(self.tab1, text = "Adjust", font=("bold",12),command = self.btn_adjust_click)
         lbl_adjust_alpha = tk.Label(self.tab1, text = "係数a")
         lbl_adjust_beta = tk.Label(self.tab1, text = "係数b")
         self.adjust_alpha = tk.StringVar() 
@@ -203,7 +215,7 @@ class Application(tk.Frame):
         txt_adjust_beta.grid(row = 9, column = 1, pady=1,sticky=tk.EW) 
 
         #ソーベルフィルタ
-        btn_sobel = tk.Button(self.tab1, text = "Sobel masking", width = 15, command = self.btn_sobel_click)
+        btn_sobel = tk.Button(self.tab1, text = "Sobel masking", font=("bold",12),command = self.btn_sobel_click)
         lbl_sobel = tk.Label(self.tab1, text = "フィルタサイズ(整数)")
         self.sobel_ksize = tk.StringVar() 
         self.sobel_ksize.set("3")
@@ -214,7 +226,7 @@ class Application(tk.Frame):
         txt_sobel.grid(row = 11, column = 1, pady=1,sticky=tk.EW) 
 
         #膨張処理(dilate)
-        btn_dilate = tk.Button(self.tab1, text = "Dilate", width = 15, command = self.btn_dilate_click)
+        btn_dilate = tk.Button(self.tab1, text = "Dilate", font=("bold",12),command = self.btn_dilate_click)
         lbl_dilate = tk.Label(self.tab1, text = "フィルタサイズ(整数)")
         self.dilate_iter = tk.StringVar() 
         self.dilate_iter.set("1")
@@ -225,7 +237,7 @@ class Application(tk.Frame):
         txt_dilate.grid(row = 13, column = 1, pady=1,sticky=tk.EW) 
 
         #縮小処理(erode)
-        btn_erode = tk.Button(self.tab1, text = "Erode", width = 15, command = self.btn_erode_click)
+        btn_erode = tk.Button(self.tab1, text = "Erode", font=("bold",12),command = self.btn_erode_click)
         lbl_erode = tk.Label(self.tab1, text = "フィルタサイズ(整数)")
         self.erode_iter = tk.StringVar() 
         self.erode_iter.set("1")
@@ -236,7 +248,7 @@ class Application(tk.Frame):
         txt_erode.grid(row = 15, column = 1, pady=1,sticky=tk.EW) 
 
         #バイラテラルフィルタ
-        btn_bilateral = tk.Button(self.tab1, text = "Bilateral masking", width = 15, command = self.btn_bilateral_click)
+        btn_bilateral = tk.Button(self.tab1, text = "Bilateral masking",font=("bold",12),command = self.btn_bilateral_click)
         lbl_bilateral = tk.Label(self.tab1, text = "フィルタサイズ(整数)")
         self.bilateral_ksize = tk.StringVar() 
         self.bilateral_ksize.set("6")
@@ -246,8 +258,8 @@ class Application(tk.Frame):
         lbl_bilateral.grid(row = 17, column = 0, pady=1,sticky=tk.EW) 
         txt_bilateral.grid(row = 17, column = 1, pady=1,sticky=tk.EW) 
 
-        #バイラテラルフィルタ
-        btn_sigmoid = tk.Button(self.tab1, text = "Sigmoidフィルタ", width = 15, command = self.btn_sigmoid_click)
+        #シグモイドフィルタ
+        btn_sigmoid = tk.Button(self.tab1, text = "Sigmoidフィルタ", font=("bold",12),command = self.btn_sigmoid_click)
         lbl_sigmoid_coeff = tk.Label(self.tab1, text = "係数")
         self.sigmoid_coeff = tk.StringVar() 
         self.sigmoid_coeff.set("1")
@@ -297,7 +309,7 @@ class Application(tk.Frame):
         id_tmp=self.tree.insert("","end",values=(0,5,5,50,50))
         self.id_list[id_tmp]=[0,5,5,50,50]
 
-        btn_rectangle = tk.Button(self.tab2, text = "矩形を描画", width = 15, command = self.btn_rectangle_click)
+        btn_rectangle = tk.Button(self.tab2, text = "矩形を描画", width = 15, command = self.btn_draw_split_click)
         btn_rectangle.place(x=x_set,y=y_set+height+10,height=20)
 
         btn_delete = tk.Button(self.tab2, text = "選択行を削除", width = 15, command = self.btn_delete_click)
@@ -499,11 +511,17 @@ class Application(tk.Frame):
         #notebookを配置
         notebook.pack(side = tk.RIGHT, fill = tk.Y)
 
+        #------------------------------------------------------------------
+        #canvasの設置
+        #------------------------------------------------------------------
         #####################################################
         # Canvas(画像の表示用)
         self.canvas = tk.Canvas(self.master, background= self.back_color)
         self.canvas.pack(expand=True,  fill=tk.BOTH)  # この両方でDock.Fillと同じ
 
+        #------------------------------------------------------------------
+        #マウスイベントの設定
+        #------------------------------------------------------------------
         #####################################################
         # マウスイベント
         self.canvas.bind("<Motion>", self.mouse_move)                       # MouseMove
@@ -511,7 +529,10 @@ class Application(tk.Frame):
         self.canvas.bind("<Button-1>", self.mouse_down_left)                # MouseDown（左ボタン）
         self.canvas.bind("<Double-Button-1>", self.mouse_double_click_left) # MouseDoubleClick（左ボタン）
         self.canvas.bind("<MouseWheel>", self.mouse_wheel)                  # MouseWheel
-        self.canvas.bind("<Button-3>", self.mouse_down_right)               # MouseDown (右ボタン)
+
+    #---------------------------------------------------------------
+    #menu barの項目選択時の関数
+    #---------------------------------------------------------------
 
     def set_image(self, filename):
         ''' 画像ファイルを開く '''
@@ -527,9 +548,6 @@ class Application(tk.Frame):
         # PillowからNumPy(OpenCVの画像)へ変換
         self.cv_image = np.array(self.pil_image)
         
-        # 差分処理用のオリジナルイメージ
-        self.cv_image_original = np.array(self.pil_image)
-        #
         # カラー画像のときは、RGBからBGRへ変換する
         if self.cv_image.ndim == 3:
             self.cv_image = cv2.cvtColor(self.cv_image, cv2.COLOR_RGB2BGR)
@@ -546,12 +564,151 @@ class Application(tk.Frame):
         # カレントディレクトリの設定
         os.chdir(os.path.dirname(filename))
 
-        #undo用
-        self.image_list.append(self.cv_image)
+        #undo用の画像リスト
+        self.image_list = [self.cv_image]
+        #フィルター結果出力用のリスト
+        self.filter_list = []
 
+
+    #画像保存
+    def save(self):
+
+        if self.cv_image is None:
+            return
+
+        filename = filedialog.asksaveasfilename(title="名前を付けて保存",\
+                filetypes=[("JPEG",".jpg"),("PNG",".png")],\
+                initialdir="./",\
+                defaultextension = "jpg")
+
+        cv2.imwrite(filename,self.cv_image)
+
+    #戻り処理
+    def undo(self):
+        if (self.cv_image is None) or (len(self.image_list)<=1):
+            return
+
+        #画像を戻す
+        self.image_list.pop()
+        self.cv_image = self.image_list[len(self.image_list)-1]
+
+        #フィルター履歴を戻す
+        self.filter_list.pop()
+
+        #変換履歴を戻す
+        text = self.history["text"]
+        text_item = text.split(",")
+       
+        new_text=""
+        for s in range(len(text_item)-1):
+
+            if s != len(text_item)-2:
+                new_text += text_item[s]+","
+            elif s == len(text_item)-2: 
+                new_text += text_item[s]
+
+        self.history["text"] = new_text
+        
+        self.redraw_image()
+
+    #フィルター履歴を保存
+    def save_filter(self):
+
+        filename = filedialog.asksaveasfilename(title="フィルター履歴を保存",\
+                filetypes=[("Text",".txt"),("CSV",".csv")],\
+                initialdir="./",\
+                defaultextension = "txt")
+
+        filters = []
+        output_line = ""
+        for filter in self.filter_list:
+            if filter[0] == "THRESHOLD":
+                filters.append("THREHOLD")
+                low = str(filter[1])
+                output_line += "THRESHOLD_LOW " + low + "\n"
+                high = str(filter[2])
+                output_line += "THRESHOLD_HIGH " + high + "\n"
+            elif filter[0] == "GAUSSIAN":
+                filters.append("GAUSSIAN")
+                k=str(filter[1])
+                output_line += "GAUSSIAN_SIZE " + k + "\n"
+            elif filter[0] == "UNSHARP":
+                filters.append("UNSHARP")
+                k=str(filter[1])
+                output_line += "UNSHARP_SIZE " + k + "\n"
+            elif filter[0] == "ADJUST":
+                filters.append("ADJUST")
+                alpha=str(filter[1])
+                output_line += "ADJUST_ALPHA " + alpha + "\n"
+                beta=str(filter[1])
+                output_line += "ADJUST_BETA " + beta + "\n"
+            elif filter[0] == "SOBEL":
+                filters.append("SOBEL")
+                k=str(filter[1])
+                output_line += "SOBEL_K " + k + "\n"
+            elif filter[0] == "DILATE":
+                filters.append("DILATE")
+                k=str(filter[1])
+                output_line += "DILATE_SIZE " + k + "\n"
+            elif filter[0] == "ERODE":
+                filters.append("ERODE")
+                k=str(filter[1])
+                output_line += "ERODE_SIZE " + k + "\n"
+            elif filter[0] == "BILATERAL":
+                filters.append("BILATERAL")
+                k=str(filter[1])
+                output_line += "BILATERAL_SIZE " + k + "\n"
+            elif filter[0] == "SIGMOID":
+                filters.append("SIGMOID")
+                a=str(filter[1])
+                output_line += "SIGMOID_COEFF " + a + "\n"
+                b=str(filter[1])
+                output_line += "SIGMOID_STD " + b + "\n"
+
+        filter_line = "FILTER_LIST " + ",".join(filters) + "\n"
+
+        output_file = open(filename,"w")
+        output_file.write(filter_line)
+        output_file.write(output_line)
+        
+        output_file.close()
+
+        messagebox.showinfo("確認","保存成功")
+
+        return
 
     #分割描画用の座標ファイルをオープン
     def open_splitfile(self):
+        filename = filedialog.askopenfilename(title="テキストファイルオープン",\
+                filetypes=[("csv file",".csv"),("CSV",".csv")],\
+                initialdir="./")
+
+        splitFile = open(filename,"r")
+
+        self.opened_splitFile = True #rectファイルを開いているか
+
+        #現在の表の項目をすべて削除
+        for key in self.id_list:
+            self.tree.delete(key)
+        
+        self.id_list = dict()
+
+        split_line = splitFile.readline()
+        n=0
+
+        while split_line:
+            
+            x = split_line.split(",")[0]
+            y = split_line.split(",")[1]
+            lx = split_line.split(",")[2]
+            ly = split_line.split(",")[3]
+            id_tmp=self.tree.insert("","end",values=(n,x,y,lx,ly))
+            self.id_list[id_tmp]=[n,x,y,lx,ly]
+
+            split_line = splitFile.readline()
+            n+=1
+            
+        splitFile.close()
 
         return
 
@@ -648,47 +805,10 @@ class Application(tk.Frame):
 
         rectFile.close()
 
-    #画像保存
-    def save(self):
+    #矩形情報を保存
+    def save_rectfile(self):
 
-        if self.cv_image is None:
-            return
-
-        filename = filedialog.asksaveasfilename(title="名前を付けて保存",\
-                filetypes=[("JPEG",".jpg"),("PNG",".png")],\
-                initialdir="./",\
-                defaultextension = "jpg")
-
-        cv2.imwrite(filename,self.cv_image)
-
-    #戻り処理
-    def undo(self):
-        if (self.cv_image is None) or (len(self.image_list)<=1):
-            return
-
-        #画像を戻す
-        self.image_list.pop()
-        self.cv_image = self.image_list[len(self.image_list)-1]
-
-        #self.image_list.pop()
-
-
-        #変換履歴を戻す
-        text = self.history["text"]
-        text_item = text.split(",")
-       
-        new_text=""
-        for s in range(len(text_item)-1):
-
-            if s != len(text_item)-2:
-                new_text += text_item[s]+","
-            elif s == len(text_item)-2: 
-                new_text += text_item[s]
-
-        self.history["text"] = new_text
-        
-        self.redraw_image()
-
+        return
 
     # -------------------------------------------------------------------------------
     # マウスイベント
@@ -713,7 +833,8 @@ class Application(tk.Frame):
             value = self.pil_image.getpixel((x, y))
             self.image_position["text"] = f"image({x: 4d}, {y: 4d}) = {value}"
 
-            if self.opened_rectFile == True:
+            split_list = []
+            if self.opened_splitFile:
                 for key in self.id_list:
                     n = self.id_list[key][0]
                     sx = int(self.id_list[key][1])
@@ -722,10 +843,8 @@ class Application(tk.Frame):
                     lsy = int(self.id_list[key][4])
 
                     if (x > sx and x< sx+lsx) and (y > sy and y < sy+lsy):
-                        return
-                        #split_list.append(str(n))
-            #self.split_data["text"] = ",".join(split_list)
-
+                        split_list.append(str(n))
+                self.split_data["text"] = ",".join(split_list)
         else:
             self.image_position["text"] = "-------------------------"
 
@@ -762,37 +881,6 @@ class Application(tk.Frame):
         
         self.redraw_image() # 再描画
     
-    def mouse_down_right(self,event):
-        ''' マウスの右ボタンをクリック '''
-        if self.pil_image is None:
-            return
-        flag = 0 
-        x = int(np.floor(self.image_posi[0]))
-        y = int(np.floor(self.image_posi[1]))
-
-        if self.right_click_mode == "A":
-            '''fail座標をgetするモードの場合'''
-            for p in self.fail_pixel:
-                if x==p[0] and y==p[1]:
-                    return 
-            self.original_pixel.append([x,y,self.cv_image[y][x]])
-            self.fail_pixel.append([x,y,self.cv_image[y][x]])
-            self.cv_image[y][x] = 255
-        elif self.right_click_mode == "B":
-            '''fail座標を元に戻すモードの場合'''
-            fp = self.fail_pixel.copy()
-            for i,p in enumerate(fp):
-                if x==p[0] and y==p[1]:
-                    self.cv_image[y][x] = p[2]
-                    self.original_pixel.pop(i)
-                    self.fail_pixel.pop(i)
-        elif self.right_click_mode == "C":
-            '''failパターンを書き込むモードの場合'''
-            for data in self.fail_pattern:
-                self.cv_image[y+data[1]][x+data[0]] = data[2]
-
-        self.redraw_image() # 再描画
-
     # -------------------------------------------------------------------------------
     # 画像表示用アフィン変換
     # -------------------------------------------------------------------------------
@@ -914,6 +1002,330 @@ class Application(tk.Frame):
             return
         self.draw_image(self.cv_image)
 
+
+    # -------------------------------------------------------------------------------
+    # ボタンイベント（tab1）
+    # -------------------------------------------------------------------------------
+
+    def btn_threshold_click(self):
+        '''Thresholdボタンがクリックされたとき'''
+        if self.pil_image is None:
+            return
+
+        # 閾値取得
+        low = int(self.threshold_low.get())
+        high = int(self.threshold_high.get())
+
+        self.cv_image = ((self.cv_image>low) & (self.cv_image<high))*255
+        self.cv_image = self.cv_image.astype("uint8")
+        
+        # 大津の方法
+        #_, self.cv_image = cv2.threshold(self.cv_image, 0, 255, cv2.THRESH_OTSU)
+
+        #変換履歴を残す
+        text = self.history["text"] + ",threshold "
+        self.history["text"] = text
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #フィルター履歴を残す
+        self.filter_list.append(["THRESHOLD",low,high])
+
+        # 処理後画像の表示
+        self.draw_image(self.cv_image)
+
+    def btn_bilateral_click(self):
+        '''Bilateralボタンがクリックされたとき'''
+        if self.pil_image is None:
+            return
+
+        d = int(self.bilateral_ksize.get())
+
+        self.cv_image = cv2.bilateralFilter(self.cv_image,d=d,sigmaColor=100,sigmaSpace=10)
+
+        #変換履歴を残す
+        text = self.history["text"] + ",bilateral "
+        self.history["text"] = text
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #フィルター履歴を残す
+        self.filter_list.append(["BILATERAL",d])
+
+        self.draw_image(self.cv_image)
+
+    def btn_sigmoid_click(self):
+        '''Sigmoidボタンがクリックされたとき'''
+        if self.pil_image is None:
+            return
+        
+        a = float(self.sigmoid_coeff.get())
+        b = float(self.sigmoid_standard.get())
+
+        print(a,b)
+
+        self.cv_image = 255/(1+np.exp(-a*(self.cv_image-b)/255))
+
+        self.cv_image = self.cv_image.astype("uint8")
+        #変換履歴を残す
+        text = self.history["text"] + ",sigmoid "
+        self.history["text"] = text
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #フィルター履歴を残す
+        self.filter_list.append(["SIGMOID",a,b])
+
+        self.draw_image(self.cv_image)
+
+    def btn_dilate_click(self):
+        if self.pil_image is None:
+            return
+
+        iteration = int(self.dilate_iter.get())
+        
+        kernel = np.ones((5,5),np.uint8)
+
+       # _, self.cv_image = cv2.threshold(self.cv_image, int(self.threshold.get()), 255, cv2.THRESH_BINARY)
+
+        self.cv_image = cv2.dilate(self.cv_image,kernel,iterations=iteration)
+
+        #変換履歴を残す
+        text = self.history["text"] + ",dilate "
+        self.history["text"] = text
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #フィルター履歴を残す
+        self.filter_list.append(["DILATE",iteration])
+
+        self.draw_image(self.cv_image)
+
+    def btn_erode_click(self):
+        if self.pil_image is None:
+            return
+
+        iteration = int(self.erode_iter.get())
+        
+        kernel = np.ones((5,5),np.uint8)
+
+       # _, self.cv_image = cv2.threshold(self.cv_image, int(self.threshold.get()), 255, cv2.THRESH_BINARY)
+
+        self.cv_image = cv2.erode(self.cv_image,kernel,iterations=iteration)
+
+        #変換履歴を残す
+        text = self.history["text"] + ",erode "
+        self.history["text"] = text
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #フィルター履歴を残す
+        self.filter_list.append(["ERODE",iteration])
+
+        self.draw_image(self.cv_image)
+
+    def btn_sobel_click(self):
+        if self.pil_image is None:
+            return
+
+        k = int(self.sobel_ksize.get())
+
+        grid_x = cv2.Sobel(self.cv_image,cv2.CV_32F,1,0,k)
+        grid_y = cv2.Sobel(self.cv_image,cv2.CV_32F,0,1,k)
+
+        #self.cv_image=np.sqrt(grid_x**2 + grid_y**2)
+        self.cv_image=np.sqrt(grid_x**2 + grid_y**2).astype("uint8")
+
+        print(np.max(self.cv_image))
+
+        #変換履歴を残す
+        text = self.history["text"] + ",sobel "
+        self.history["text"] = text
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #フィルター履歴を残す
+        self.filter_list.append(["SOBEL",k])
+
+        self.draw_image(self.cv_image)
+
+    def btn_adjust_click(self):
+        if self.pil_image is None:
+            return
+
+        alpha = float(self.adjust_alpha.get())
+        beta = float(self.adjust_beta.get())
+
+        self.cv_image = alpha*self.cv_image+beta
+        self.cv_image = np.clip(self.cv_image,0,255).astype(np.uint8)
+
+        #変換履歴を残す
+        text = self.history["text"] + ",adjust "
+        self.history["text"] = text
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #フィルター履歴を残す
+        self.filter_list.append(["ADJUST",alpha,beta])
+
+        self.draw_image(self.cv_image)
+
+
+    def btn_unsharp_click(self):
+        '''Unsharpボタンがクリックされたとき'''
+        if self.pil_image is None:
+            return
+
+        # kの値を取得 鮮鋭化処理
+        k = int(self.unsharp_kvalue.get())
+        
+        #カーネル作成
+        self.unsharp_kernel = np.array([[-k/9,-k/9,-k/9],
+                          [-k/9,1+8*k/9,k/9],
+                          [-k/9,-k/9,-k/9]],np.float32)
+
+        #フィルタ処理 
+        self.cv_image = cv2.filter2D(self.cv_image,-1,self.unsharp_kernel).astype("uint8")
+
+        #変換履歴を残す
+        text = self.history["text"] + ",unsharp "
+        self.history["text"] = text
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #フィルター履歴を残す
+        self.filter_list.append(["UNSHARP",k])
+
+        # 処理後画像の表示
+        self.draw_image(self.cv_image)
+
+
+    def btn_gaussian_click(self):
+        '''Gaussianボタンがクリックされたとき'''
+        if self.pil_image is None:
+            return
+
+        # ガウシアンフィルタ処理
+        ksize = int(self.gaussian_ksize.get())
+        # カーネルサイズを奇数に調整
+        ksize = int(ksize / 2) * 2 + 1
+        self.cv_image = cv2.GaussianBlur(self.cv_image, (ksize, ksize), 0)
+
+        #undo用
+        self.image_list.append(self.cv_image)
+
+        #変換履歴を残す
+        text = self.history["text"] + ",unsharp "
+        self.history["text"] = text
+
+        #フィルター履歴を残す
+        self.filter_list.append(["GAUSSIAN",ksize])
+
+        # 処理後画像の表示
+        self.draw_image(self.cv_image)
+
+    #############################################################
+    #ボタンイベント tab2
+    #############################################################
+
+    def btn_draw_split_click(self):
+        #描画ボタンがクリックされたとき:
+        if self.pil_image is None:
+            return
+
+        if self.cv_image.ndim == 2:
+            self.cv_image = cv2.cvtColor(self.cv_image,cv2.COLOR_GRAY2RGBA)
+
+        for i,key in enumerate(self.id_list):
+            x1 = int(self.id_list[key][1])
+            y1 = int(self.id_list[key][2])
+            x2 = x1+int(self.id_list[key][3])
+            y2 = y1+int(self.id_list[key][4])
+            cv2.rectangle(self.cv_image,(x1,y1),(x2,y2),(0,0,200),1)
+            cv2.putText(self.cv_image,str(i),(x1,y1),cv2.FONT_HERSHEY_PLAIN,1.5,(0,200,0),1,cv2.LINE_AA)
+
+        self.redraw_image()
+
+        return
+
+
+    def btn_delete_click(self):
+        '''表削除ボタンがクリックされたとき'''
+        selected_items = self.tree.selection()
+        for item in selected_items:
+            self.tree.delete(item)
+            self.id_list.pop(item)
+
+        for i,key in enumerate(self.id_list):
+            self.id_list[key][0]=i
+            self.tree.set(key,column=0,value=i)
+
+    def btn_add_click(self):
+        '''表追加ボタンがクリックされたとき'''
+
+        data = self.new_data.get()
+        data_arr = data.split(",")
+
+        if len(data_arr)!=4:
+            self.new_data.set("")
+            return
+       
+        item = self.tree.insert("","end",values=(len(self.id_list),data_arr[0],data_arr[1],data_arr[2],data_arr[3]))
+        self.id_list[item]=[len(self.id_list),data_arr[0],data_arr[1],data_arr[2],data_arr[3]]
+        self.new_data.set("")
+
+        return 
+
+    def check_button_click(self):
+        '''チェックボタンがクリックされたとき'''
+
+        if self.pil_image is None:
+            return
+
+        if self.cv_image.ndim == 2:
+            self.cv_image = cv2.cvtColor(self.cv_image,cv2.COLOR_GRAY2RGBA)
+
+        value = self.check_value.get()
+
+        if value:
+            #チェックボックスがONしていればgridを表示
+            self.before_grid_image = self.cv_image.copy()
+            size_x = self.cv_image.shape[0]
+            size_y = self.cv_image.shape[1]
+            grid_size=50
+            for x in range(0,size_x,grid_size):
+                for y in range(0,size_y,grid_size):
+                    x1 = x
+                    y1 = y
+                    x2 = x+grid_size
+                    y2 = y+grid_size
+                    cv2.rectangle(self.cv_image,(x1,y1),(x2,y2),(0,200,0),1)
+                    cv2.putText(self.cv_image,str(x1),(x1,y1),cv2.FONT_HERSHEY_PLAIN,1,(0,200,0),1,cv2.LINE_AA)
+                    cv2.putText(self.cv_image,str(y1),(x1,y1+15),cv2.FONT_HERSHEY_PLAIN,1,(0,200,0),1,cv2.LINE_AA)
+
+                    for i in range(0,50,10):
+                        for j in range(0,50,10):
+
+                            cv2.circle(self.cv_image,(x1+i,y1+j),1,(200,0,0),-1,cv2.LINE_AA)
+        else:
+            self.cv_image = self.before_grid_image
+
+        self.redraw_image()
+
+    def radio_click(self):
+        '''ラジオボタンがクリックされたとき'''
+        value = self.radio_value.get()
+        self.rectangle_mode = value
+
+        return
+
+
+
+
+
+
+
+
     # -------------------------------------------------------------------------------
     # ボタンイベント（tab3）
     # -------------------------------------------------------------------------------
@@ -989,278 +1401,6 @@ class Application(tk.Frame):
 
         self.cv_image = cv2.cvtColor(self.cv_image,cv2.COLOR_BGR2GRAY)
         self.redraw_image()
-
-    def btn_threshold_click(self):
-        '''Thresholdボタンがクリックされたとき'''
-        if self.pil_image is None:
-            return
-
-        # 二値化
-        high = int(self.threshold_high.get())
-        low = int(self.threshold_low.get())
-
-        self.cv_image = ((self.cv_image>low) & (self.cv_image<high))*255
-        self.cv_image = self.cv_image.astype("uint8")
-        
-        # 大津の方法
-        #_, self.cv_image = cv2.threshold(self.cv_image, 0, 255, cv2.THRESH_OTSU)
-
-        #変換履歴を残す
-        text = self.history["text"] + ",threshold "
-        self.history["text"] = text
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        # 処理後画像の表示
-        self.draw_image(self.cv_image)
-
-    def btn_bilateral_click(self):
-        '''Bilateralボタンがクリックされたとき'''
-        if self.pil_image is None:
-            return
-
-        d = int(self.bilateral_ksize.get())
-
-        self.cv_image = cv2.bilateralFilter(self.cv_image,d=d,sigmaColor=100,sigmaSpace=10)
-
-        #変換履歴を残す
-        text = self.history["text"] + ",bilateral "
-        self.history["text"] = text
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        self.draw_image(self.cv_image)
-
-    def btn_sigmoid_click(self):
-        '''Sigmoidボタンがクリックされたとき'''
-        if self.pil_image is None:
-            return
-        
-        a = float(self.sigmoid_coeff.get())
-        b = float(self.sigmoid_standard.get())
-
-        print(a,b)
-
-        self.cv_image = 255/(1+np.exp(-a*(self.cv_image-b)/255))
-
-        self.cv_image = self.cv_image.astype("uint8")
-        #変換履歴を残す
-        text = self.history["text"] + ",sigmoid "
-        self.history["text"] = text
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        self.draw_image(self.cv_image)
-
-    def btn_differ_click(self):
-        '''Differボタンがクリックされたとき'''
-        if self.pil_image is None:
-            return
-
-        #self.cv_image = cv2.absdiff(self.cv_image_original,self.cv_image)
-        self.cv_image = np.where(self.cv_image >= self.cv_image_original,255,self.cv_image_original)
-
-        #変換履歴を残す
-        text = self.history["text"] + ",differ "
-        self.history["text"] = text
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        self.draw_image(self.cv_image)
-
-    def btn_dilate_click(self):
-        if self.pil_image is None:
-            return
-
-        iteration = int(self.dilate_iter.get())
-        
-        kernel = np.ones((5,5),np.uint8)
-
-       # _, self.cv_image = cv2.threshold(self.cv_image, int(self.threshold.get()), 255, cv2.THRESH_BINARY)
-
-        self.cv_image = cv2.dilate(self.cv_image,kernel,iterations=iteration)
-
-        #変換履歴を残す
-        text = self.history["text"] + ",dilate "
-        self.history["text"] = text
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        self.draw_image(self.cv_image)
-
-    def btn_erode_click(self):
-        if self.pil_image is None:
-            return
-
-        iteration = int(self.erode_iter.get())
-        print(iteration)
-        
-        kernel = np.ones((5,5),np.uint8)
-
-       # _, self.cv_image = cv2.threshold(self.cv_image, int(self.threshold.get()), 255, cv2.THRESH_BINARY)
-
-        self.cv_image = cv2.erode(self.cv_image,kernel,iterations=iteration)
-
-        #変換履歴を残す
-        text = self.history["text"] + ",erode "
-        self.history["text"] = text
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        self.draw_image(self.cv_image)
-
-    def btn_sobel_click(self):
-        if self.pil_image is None:
-            return
-
-        k = int(self.sobel_ksize.get())
-
-        grid_x = cv2.Sobel(self.cv_image,cv2.CV_32F,1,0,k)
-        grid_y = cv2.Sobel(self.cv_image,cv2.CV_32F,0,1,k)
-
-        #self.cv_image=np.sqrt(grid_x**2 + grid_y**2)
-        self.cv_image=np.sqrt(grid_x**2 + grid_y**2).astype("uint8")
-
-        print(np.max(self.cv_image))
-
-        #変換履歴を残す
-        text = self.history["text"] + ",sobel "
-        self.history["text"] = text
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        self.draw_image(self.cv_image)
-
-    def btn_adjust_click(self):
-        if self.pil_image is None:
-            return
-
-        alpha = float(self.adjust_alpha.get())
-
-        self.cv_image = alpha*self.cv_image
-        self.cv_image = np.clip(self.cv_image,0,255).astype(np.uint8)
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        self.draw_image(self.cv_image)
-
-
-    def btn_unsharp_click(self):
-        '''Unsharpボタンがクリックされたとき'''
-        if self.pil_image is None:
-            return
-
-        # kの値を取得 鮮鋭化処理
-        k = int(self.unsharp_kvalue.get())
-        
-        #カーネル作成
-        self.unsharp_kernel = np.array([[-k/9,-k/9,-k/9],
-                          [-k/9,1+8*k/9,k/9],
-                          [-k/9,-k/9,-k/9]],np.float32)
-
-        #フィルタ処理 
-        self.cv_image = cv2.filter2D(self.cv_image,-1,self.unsharp_kernel).astype("uint8")
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        # 処理後画像の表示
-        self.draw_image(self.cv_image)
-
-
-    def btn_gaussian_click(self):
-        '''Gaussianボタンがクリックされたとき'''
-        if self.pil_image is None:
-            return
-
-        # ガウシアンフィルタ処理
-        ksize = int(self.gaussian_ksize.get())
-        # カーネルサイズを奇数に調整
-        ksize = int(ksize / 2) * 2 + 1
-        self.cv_image = cv2.GaussianBlur(self.cv_image, (ksize, ksize), 0)
-
-        #undo用
-        self.image_list.append(self.cv_image)
-
-        # 処理後画像の表示
-        self.draw_image(self.cv_image)
-
-    #############################################################
-    #ボタンイベント tab2
-    #############################################################
-    def btn_delete_click(self):
-        '''表削除ボタンがクリックされたとき'''
-        selected_items = self.tree.selection()
-        for item in selected_items:
-            self.tree.delete(item)
-            self.id_list.pop(item)
-
-        for i,key in enumerate(self.id_list):
-            self.id_list[key][0]=i
-            self.tree.set(key,column=0,value=i)
-
-    def btn_add_click(self):
-        '''表追加ボタンがクリックされたとき'''
-
-        data = self.new_data.get()
-        data_arr = data.split(",")
-
-        if len(data_arr)!=4:
-            self.new_data.set("")
-            return
-       
-        item = self.tree.insert("","end",values=(len(self.id_list),data_arr[0],data_arr[1],data_arr[2],data_arr[3]))
-        self.id_list[item]=[len(self.id_list),data_arr[0],data_arr[1],data_arr[2],data_arr[3]]
-        self.new_data.set("")
-
-        return 
-
-    def check_button_click(self):
-        '''チェックボタンがクリックされたとき'''
-
-        if self.pil_image is None:
-            return
-
-        value = self.check_value.get()
-
-        #self.cv_image = self.original_cv_image.copy()
-
-        if value:
-            #チェックボックスがONしていればgridを表示
-            size_x = self.cv_image.shape[0]
-            size_y = self.cv_image.shape[1]
-            grid_size=50
-            for x in range(0,size_x,grid_size):
-                for y in range(0,size_y,grid_size):
-                    x1 = x
-                    y1 = y
-                    x2 = x+grid_size
-                    y2 = y+grid_size
-                    cv2.rectangle(self.cv_image,(x1,y1),(x2,y2),(0,200,0),1)
-                    cv2.putText(self.cv_image,str(x1),(x1,y1),cv2.FONT_HERSHEY_PLAIN,1,(0,200,0),1,cv2.LINE_AA)
-                    cv2.putText(self.cv_image,str(y1),(x1,y1+15),cv2.FONT_HERSHEY_PLAIN,1,(0,200,0),1,cv2.LINE_AA)
-
-                    for i in range(0,50,10):
-                        for j in range(0,50,10):
-
-                            cv2.circle(self.cv_image,(x1+i,y1+j),1,(200,0,0),-1,cv2.LINE_AA)
-
-        self.redraw_image()
-
-    def radio_click(self):
-        '''ラジオボタンがクリックされたとき'''
-        value = self.radio_value.get()
-        self.rectangle_mode = value
-
-        return
 
 if __name__ == "__main__":
     root = tk.Tk()

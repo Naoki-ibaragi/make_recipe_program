@@ -609,8 +609,9 @@ class Application(tk.Frame):
         value = self.check_value.get()
 
         #self.cv_image = self.original_cv_image.copy()
-
+        print(value)
         if value:
+            self.before_grid_image = self.cv_image.copy()
             #チェックボックスがONしていればgridを表示
             size_x = self.cv_image.shape[0]
             size_y = self.cv_image.shape[1]
@@ -629,6 +630,8 @@ class Application(tk.Frame):
                         for j in range(0,50,10):
 
                             cv2.circle(self.cv_image,(x1+i,y1+j),1,(200,0,0),-1,cv2.LINE_AA)
+        else:
+            self.cv_image = self.before_grid_image
 
         self.redraw_image()
 

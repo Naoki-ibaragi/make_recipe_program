@@ -352,6 +352,10 @@ class Application(tk.Frame):
         self.check_grid = tk.Checkbutton(self.tab2, variable=self.check_value_grid,text = "グリッド表示", command = self.check_button_grid_click)
         self.check_grid.place(x=x_set,y=y_set+height+135,height=20)
 
+        self.check_value_color_split = tk.BooleanVar()
+        self.check_split = tk.Checkbutton(self.tab2, variable=self.check_value_color_split,text = "矩形塗りつぶし", command = self.check_button_split_color_click)
+        self.check_split.place(x=x_set+100,y=y_set+height+110,height=20)
+
         self.radio_value = tk.IntVar(value=0)
         self.rectangle_mode = 0
 
@@ -730,9 +734,9 @@ class Application(tk.Frame):
             x = split_line.split(",")[0]
             y = split_line.split(",")[1]
             lx = split_line.split(",")[2]
-            ly = split_line.split(",")[3]
+            ly = split_line.split(",")[3].replace("\n","")
             id_tmp=self.tree.insert("","end",values=(n+1,x,y,lx,ly))
-            self.id_list[id_tmp]=[n,x,y,lx,ly]
+            self.id_list[id_tmp]=[n+1,x,y,lx,ly]
 
             split_line = splitFile.readline()
             n+=1
@@ -1444,6 +1448,34 @@ class Application(tk.Frame):
         self.redraw_image()
 
         return
+
+    def check_button_split_color_click(self):
+        '''矩形表示塗りつぶしがチェックされたとき'''
+
+        if self.pil_image is None:
+            return
+
+        if self.cv_image.ndim == 2:
+            self.cv_image = cv2.cvtColor(self.cv_image,cv2.COLOR_GRAY2RGBA)
+
+        value = self.check_value_color_split.get()
+
+        if value:
+            for i,key in enumerate(self.id_list):
+                x1 = int(self.id_list[key][1])
+                y1 = int(self.id_list[key][2])
+                x2 = x1+int(self.id_list[key][3])
+                y2 = y1+int(self.id_list[key][4])
+                cv2.rectangle(self.cv_image,(x1,y1),(x2,y2),(0,0,200),-1)
+                #cv2.putText(self.cv_image,str(i),(x1,y1),cv2.FONT_HERSHEY_PLAIN,1.5,(0,200,0),1,cv2.LINE_AA)
+
+        else:
+            self.cv_image = self.before_split_image
+
+        self.redraw_image()
+
+        return
+
 
     def check_button_grid_click(self):
         '''グリッドチェックボタンがクリックされたとき'''

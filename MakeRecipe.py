@@ -697,7 +697,7 @@ class Application(tk.Frame):
                 filters.append("SIGMOID")
                 a=str(filter[1])
                 output_line += "SIGMOID_COEFF " + a + "\n"
-                b=str(filter[1])
+                b=str(filter[2])
                 output_line += "SIGMOID_STD " + b + "\n"
 
         filter_line = "FILTER_LIST " + ",".join(filters) + "\n"
